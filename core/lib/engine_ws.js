@@ -99,6 +99,66 @@ function getMessageHandler(context, params, ee, callback) {
   };
 }
 
+function listen(requestSpec) {
+  return function(context, callback) {
+    const params = requestSpec.listen;
+    context.vars["results"] = [];
+    context.ws.on("message", function(event) {
+      context.vars["results"].push(event);
+      debug("Received message, putting it on results array.");
+    });
+    setTimeout(() => {
+      return callback(null, context);
+    }, params.timeout);
+  };
+}
+
+function binary() {
+  return function(context, callback) {
+    context.vars['binary'] = true
+    return callback(null, context)
+  }
+}
+
+function assert(requestSpec, ee) {
+  const assert = requestSpec.assert
+  return function(context, callback) {
+    let result = context.vars["results"].find((it) => checkResult(it, assert))
+    if (result) {
+      ee.emit("match", `Matched - "${assert.that}": "${assert.equals}" on results`);
+      return callback(null, context);
+    } else {
+      ee.emit("error", `No matches for "${assert.that}": "${assert.equals}" on results`)
+      return callback(new Error("Failed capture or match"), context);
+    }
+  };
+}
+
+function checkResult(result, assert) {
+  if (!isJson(result)) {
+    return false
+  }
+
+  result = JSON.parse(result)
+
+  if (result.hasOwnProperty(assert.that)) {
+    return result[assert.that] === assert.equals
+  }
+}
+
+function isJson(item) {
+  item = typeof item !== "string"
+      ? JSON.stringify(item)
+      : item;
+
+  try {
+    item = JSON.parse(item);
+  } catch (e) {
+    return false;
+  }
+  return typeof item === "object" && item !== null;
+}
+
 WSEngine.prototype.step = function(requestSpec, ee) {
   const self = this;
 
@@ -150,7 +210,19 @@ WSEngine.prototype.step = function(requestSpec, ee) {
       });
     };
   }
+  
+  if (requestSpec.listen) {
+    return listen(requestSpec);
+  }
 
+  if (requestSpec.assert) {
+    return assert(requestSpec, ee);
+  }
+
+  if (requestSpec.binary) {
+    return binary(requestSpec)
+  }
+  
   const f = function(context, callback) {
     ee.emit('counter', 'engine.websocket.messages_sent', 1);
     ee.emit('rate', 'engine.websocket.send_rate');
@@ -161,10 +233,9 @@ WSEngine.prototype.step = function(requestSpec, ee) {
 
     // Backwards compatible with previous version of `send` api
     let payload = template(params.capture ? params.payload : params, context);
-    if (typeof payload === 'object') {
-      payload = JSON.stringify(payload);
-    } else {
-      payload = payload.toString();
+    
+    if (!context.vars['binary']) {
+      payload = stringify(payload);
     }
 
     debug('WS send: %s', payload);
@@ -190,6 +261,15 @@ WSEngine.prototype.step = function(requestSpec, ee) {
 
   return f;
 };
+
+function stringify(payload) {
+  if (typeof payload === "object") {
+    payload = JSON.stringify(payload);
+  } else {
+    payload = payload.toString();
+  }
+  return payload;
+}
 
 function getWsOptions(config) {
   const options = getWsConfig(config);
