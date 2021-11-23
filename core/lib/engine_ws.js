@@ -101,6 +101,7 @@ function getMessageHandler(context, params, ee, callback) {
 
 function listen(requestSpec) {
   return function(context, callback) {
+    console.log('ahea')
     const params = requestSpec.listen;
     context.vars["results"] = [];
     context.ws.on("message", function(event) {
@@ -234,7 +235,7 @@ WSEngine.prototype.step = function(requestSpec, ee) {
     // Backwards compatible with previous version of `send` api
     let payload = template(params.capture ? params.payload : params, context);
     
-    if (!context.vars['binary']) {
+    if (context.vars !== undefined && !context.vars['binary']) {
       payload = stringify(payload);
     }
 

@@ -7,8 +7,9 @@
 const test = require('tape');
 const sinon = require('sinon');
 const rewiremock = require('rewiremock/node');
+const runner = require("../../../core").runner;
 
-const HttpsProxyAgent = require('https-proxy-agent');
+const HttpsProxyAgent = require("https-proxy-agent");
 const EventEmitter = require('events');
 const _ = require('lodash');
 
@@ -262,9 +263,79 @@ test('WebSocket engine - connect action (object)', (t) => {
   });
 });
 
+test.only("WebSocket engine - Assert", (t) => {
+ // WebsocketMock.resetHistory();
+ //WebsocketMock.resetHistory();
+ const script = _.cloneDeep(baseScript);
+
+  // const script = {
+  //   config: {
+  //     target: "ws://localhost:9093",
+  //     phases: [{ duration: 1, arrivalCount: 1 }],
+  //     ws: {},
+  //   },
+  //   scenarios: [
+  //     {
+  //       engine: "ws",
+  //       flow: [{ send: "hello" }],
+  //     },
+  //   ],
+  // };
+
+  script.scenarios = [
+    {
+      name: "Nevermind",
+      engine: "ws",
+      flow: [
+        { send: "Hello" },
+        { listen: { timeout: 1000 } },
+        //{ assert: { that: "name", equals: "test" } }
+      ]
+    }
+  ];
+
+  class WsMockInstance extends EventEmitter {
+    constructor() {
+      super();
+    }
+    close() {}
+  }
+
+  runner(script).then(function(ee) {
+
+    sandbox = sinon.sandbox.create();
+    rewiremock.enable();
+  
+    WsMockInstance.prototype.send = sandbox.stub().yields();
+  
+    wsMockInstance = new WsMockInstance();
+  
+    WebsocketMock = sandbox.stub().returns(wsMockInstance);
+  
+    rewiremock('ws').with(WebsocketMock);
+  
+    WebSocketEngine = require('../../../core/lib/engine_ws');
+
+    ee.on('started', () => {
+      setTimeout(() => {
+        wsMockInstance.emit('send');
+      }, 200);
+    });
+
+    ee.on("done", function(nr) {
+      ee.stop().then(() => {
+        console.log(nr)
+        t.end();
+      });
+    });
+    ee.run();
+  });
+});
+
 test('WebSocket engine - teardown', (t) => {
   sandbox.restore();
   rewiremock.disable();
 
   t.end();
 });
+
