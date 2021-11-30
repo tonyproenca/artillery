@@ -107,10 +107,27 @@ function listen(requestSpec) {
       context.vars["results"].push(event);
       debug("Received message, putting it on results array.");
     });
-    setTimeout(() => {
-      return callback(null, context);
-    }, params.timeout);
+    if (params.tick) {
+      return tick(params, context, callback);
+    } else {
+      setTimeout(() => {
+        return callback(null, context);
+      }, params.timeout);
+    }
   };
+}
+
+function tick(params, context, callback) {
+  let i = 0;
+  let amount = params.tick.amount;
+
+  (function loop() {
+    if (i++ > amount) return callback(null, context);
+    setTimeout(() => {
+      context.ws.send(params.tick.message);
+      loop();
+    }, params.tick.time);
+  })();
 }
 
 function binary() {
@@ -234,7 +251,7 @@ WSEngine.prototype.step = function(requestSpec, ee) {
     // Backwards compatible with previous version of `send` api
     let payload = template(params.capture ? params.payload : params, context);
     
-    if (!context.vars['binary']) {
+    if (context.vars !== undefined && !context.vars['binary']) {
       payload = stringify(payload);
     }
 
