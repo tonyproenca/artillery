@@ -5,6 +5,7 @@
 'use strict';
 
 const test = require('tape');
+const sleep = require('sleep-promise');
 const sinon = require('sinon');
 const rewiremock = require('rewiremock/node');
 const runner = require("../../../core").runner;
@@ -263,24 +264,13 @@ test('WebSocket engine - connect action (object)', (t) => {
   });
 });
 
-test.only("WebSocket engine - Assert", (t) => {
- // WebsocketMock.resetHistory();
- //WebsocketMock.resetHistory();
- const script = _.cloneDeep(baseScript);
+asyncTest('WebSocket engine - Assert', async (t) => {
+  const script = _.cloneDeep(baseScript);
+  WebsocketMock.resetHistory();
 
-  // const script = {
-  //   config: {
-  //     target: "ws://localhost:9093",
-  //     phases: [{ duration: 1, arrivalCount: 1 }],
-  //     ws: {},
-  //   },
-  //   scenarios: [
-  //     {
-  //       engine: "ws",
-  //       flow: [{ send: "hello" }],
-  //     },
-  //   ],
-  // };
+  const context = {
+    vars: {},
+  };
 
   script.scenarios = [
     {
@@ -289,47 +279,156 @@ test.only("WebSocket engine - Assert", (t) => {
       flow: [
         { send: "Hello" },
         { listen: { timeout: 1000 } },
-        //{ assert: { that: "name", equals: "test" } }
-      ]
-    }
+        { assert: { that: "name", equals: "test" } }
+      ],
+    },
   ];
 
-  class WsMockInstance extends EventEmitter {
-    constructor() {
-      super();
-    }
-    close() {}
-  }
+  const engine = new WebSocketEngine(script);
+  const ee = new EventEmitter();
 
-  runner(script).then(function(ee) {
+  const runScenario = engine.createScenario(script.scenarios[0], ee);
 
-    sandbox = sinon.sandbox.create();
-    rewiremock.enable();
-  
-    WsMockInstance.prototype.send = sandbox.stub().yields();
-  
-    wsMockInstance = new WsMockInstance();
-  
-    WebsocketMock = sandbox.stub().returns(wsMockInstance);
-  
-    rewiremock('ws').with(WebsocketMock);
-  
-    WebSocketEngine = require('../../../core/lib/engine_ws');
+  ee.on('started', () => {
+    setTimeout(() => {
+      wsMockInstance.emit('{"name": "test"}');
+    }, 200);
+  });
+
+  let err = runScenario(context, (err) => {
+    return err
+  });
+  await sleep(3000)
+  t.assert(!err, 'Virtual user finished successfully');
+  t.end()
+})
+
+asyncTest('WebSocket engine - Multiple assertions', async (t) => {
+  const script = _.cloneDeep(baseScript);
+  WebsocketMock.resetHistory();
+
+  const context = {
+    vars: {},
+  };
+
+  script.scenarios = [
+    {
+      name: "Nevermind",
+      engine: "ws",
+      flow: [
+        { send: "Hello" },
+        { listen: { timeout: 1000 } },
+        { assert: { that: "name", equals: "test" } },
+        { assert: { that: "id", equals: "123" } }
+      ],
+    },
+  ];
+
+  const engine = new WebSocketEngine(script);
+  const ee = new EventEmitter();
+
+  const runScenario = engine.createScenario(script.scenarios[0], ee);
+
+  ee.on('started', () => {
+    setTimeout(() => {
+      wsMockInstance.emit('{"name": "test", "id": 123}');
+    }, 200);
+  });
+
+  console.log("almost finishing")
+  let err = runScenario(context, async (err) => {
+    console.log("finishing here")
+    return err
+  });
+  await sleep(3000)
+  t.assert(!err, 'Virtual user finished successfully');
+  t.end()
+});
+
+asyncTest(
+  "WebSocket engine - Assert not finding the expected result",
+  async (t) => {
+    const script = _.cloneDeep(baseScript);
+
+    WebsocketMock.resetHistory();
+
+    const context = {
+      vars: {},
+    };
+
+    script.scenarios = [
+      {
+        name: "Nevermind",
+        engine: "ws",
+        flow: [
+          { send: "Hello" },
+          { listen: { timeout: 1000 } },
+          { assert: { that: "name", equals: "test" } },
+        ],
+      },
+    ];
+
+    const engine = new WebSocketEngine(script);
+    const ee = new EventEmitter();
+
+    const runScenario = engine.createScenario(script.scenarios[0], ee);
+
+    // process.on("uncaughtException", function(err) {
+    //   console.log("UNCAUGHT EXCEPTION - keeping process alive:", err); // err.message is "foobar"
+    // });
 
     ee.on('started', () => {
       setTimeout(() => {
-        wsMockInstance.emit('send');
+        wsMockInstance.emit('asdasd');
       }, 200);
     });
 
-    ee.on("done", function(nr) {
-      ee.stop().then(() => {
-        console.log(nr)
-        t.end();
-      });
+
+    // ee.on("error", (error) => {
+    //   console.log(`Gracefully handling our error: ${error}`);
+    // });
+
+    let err = await runScenario(context, (err) => {
+      console.log("finishing here")
+      return err
     });
-    ee.run();
+
+    await sleep(5000)
+    t.assert(!err, 'Virtual user finished successfully');
+    t.end()
+  }
+);
+
+asyncTest('WebSocket engine - Binary', async (t) => {
+  const script = _.cloneDeep(baseScript);
+  WebsocketMock.resetHistory();
+
+  const context = {
+    vars: {},
+  };
+
+  script.scenarios = [
+    {
+      name: "Nevermind",
+      engine: "ws",
+      flow: [
+        { binary: true },
+        { send: "Hello" },
+      ],
+    },
+  ];
+
+  const engine = new WebSocketEngine(script);
+  const ee = new EventEmitter();
+
+  const runScenario = engine.createScenario(script.scenarios[0], ee);
+
+  let err = runScenario(context, async (err) => {
+    return err
   });
+  await sleep(3000)
+  t.assert(!err, 'Virtual user finished successfully');
+  t.end()
 });
 
 test('WebSocket engine - teardown', (t) => {

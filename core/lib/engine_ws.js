@@ -100,18 +100,35 @@ function getMessageHandler(context, params, ee, callback) {
 }
 
 function listen(requestSpec) {
+  console.log("xablau!")
   return function(context, callback) {
-    console.log('ahea')
     const params = requestSpec.listen;
     context.vars["results"] = [];
     context.ws.on("message", function(event) {
       context.vars["results"].push(event);
       debug("Received message, putting it on results array.");
     });
-    setTimeout(() => {
-      return callback(null, context);
-    }, params.timeout);
+    if (params.tick) {
+      return tick(params, context, callback);
+    } else {
+      setTimeout(() => {
+        return callback(null, context);
+      }, params.timeout);
+    }
   };
+}
+
+function tick(params, context, callback) {
+  let i = 0;
+  let amount = params.tick.amount;
+
+  (function loop() {
+    if (i++ > amount) return callback(null, context);
+    setTimeout(() => {
+      context.ws.send(params.tick.message);
+      loop();
+    }, params.tick.time);
+  })();
 }
 
 function binary() {
